@@ -7,9 +7,9 @@ import LMStudioProvider from "./providers/lmstudioProvider.js";
 
 /**
  * AI Gateway
- * 
+ *
  * Central gateway for all AI processing requests.
- * 
+ *
  * Architecture:
  * Application Feature
  *    ↓
@@ -26,10 +26,10 @@ import LMStudioProvider from "./providers/lmstudioProvider.js";
  * Normalized Response
  *    ↓
  * Application Feature
- * 
+ *
  * IMPORTANT: The gateway enforces policy BEFORE any provider execution.
  * Classification ≠ automatic AI permission - the gateway makes the final decision.
- * 
+ *
  * Default-deny: UNKNOWN classification blocks external AI.
  * Restricted data NEVER falls back to external providers.
  */
@@ -44,7 +44,7 @@ class AIGateway {
     // Initialize external providers
     this.providers.set("gemini", new GeminiProvider());
     this.providers.set("groq", new GroqProvider());
-    
+
     // Initialize private provider (optional - may be unavailable)
     this.providers.set("ollama", new OllamaProvider());
     this.providers.set("lmstudio", new LMStudioProvider());
@@ -60,10 +60,12 @@ class AIGateway {
   /**
    * Check if private provider is available
    */
-  async isPrivateProviderAvailable(providerName = process.env.AI_PRIVATE_PROVIDER || "ollama") {
+  async isPrivateProviderAvailable(
+    providerName = process.env.AI_PRIVATE_PROVIDER || "ollama",
+  ) {
     const privateProvider = this.getProvider(providerName);
     if (!privateProvider) return false;
-    
+
     try {
       const health = await privateProvider.healthCheck();
       return health.available;
@@ -77,13 +79,22 @@ class AIGateway {
    */
   redactAuditContent(content) {
     if (typeof content !== "string") return "[non-string content]";
-    return content.slice(0, 120).replace(/\s+/g, " ") + (content.length > 120 ? "..." : "");
+    return (
+      content.slice(0, 120).replace(/\s+/g, " ") +
+      (content.length > 120 ? "..." : "")
+    );
   }
 
   /**
    * Create audit metadata (safe for logging)
    */
-  createAuditMetadata(request, policyDecision, provider, processingMode, latency) {
+  createAuditMetadata(
+    request,
+    policyDecision,
+    provider,
+    processingMode,
+    latency,
+  ) {
     return {
       requestId: request.requestId || uuidv4(),
       capability: request.capability,
@@ -92,7 +103,8 @@ class AIGateway {
       provider: provider?.getName() || "none",
       processingMode,
       allowed: policyDecision.allowed,
-      contentLength: typeof request.content === "string" ? request.content.length : 0,
+      contentLength:
+        typeof request.content === "string" ? request.content.length : 0,
       contentPreview: this.redactAuditContent(request.content),
       latency,
       timestamp: new Date().toISOString(),
@@ -105,22 +117,38 @@ class AIGateway {
   async processRequest(request) {
     const requestId = request.requestId || uuidv4();
     const startTime = Date.now();
-    
+
     // Step 1: Evaluate AI policy
-    const privateProviderName = request.preferredProvider || process.env.AI_PRIVATE_PROVIDER || "ollama";
-    const privateProviderAvailable = await this.isPrivateProviderAvailable(privateProviderName);
-    
+    const privateProviderName =
+      request.preferredProvider || process.env.AI_PRIVATE_PROVIDER || "ollama";
+    const privateProviderAvailable =
+      await this.isPrivateProviderAvailable(privateProviderName);
+
+    // console.log("AI GATEWAY DEBUG:", {
+    //   classification: request.classification,
+    //   classificationSource: request.classificationSource,
+    //   externalAIAllowed: request.externalAIAllowed,
+    //   preferredProvider: request.preferredProvider,
+    //   privateProviderName,
+    //   privateProviderAvailable,
+    // });
+
     const policyDecision = evaluateAIClassification({
       classification: request.classification,
       classificationSource: request.classificationSource,
       externalAIAllowed: request.externalAIAllowed,
       privateProviderAvailable,
     });
-    
+
+    // console.log("POLICY DECISION:", policyDecision);
+
     // Step 2: Check if blocked by policy
-    if (!policyDecision.allowed || policyDecision.processingMode === "blocked") {
+    if (
+      !policyDecision.allowed ||
+      policyDecision.processingMode === "blocked"
+    ) {
       const latency = Date.now() - startTime;
-      
+
       return {
         success: false,
         allowed: false,
@@ -138,18 +166,28 @@ class AIGateway {
           latency,
           timestamp: new Date().toISOString(),
         },
-        audit: this.createAuditMetadata(request, policyDecision, null, "blocked", latency),
+        audit: this.createAuditMetadata(
+          request,
+          policyDecision,
+          null,
+          "blocked",
+          latency,
+        ),
       };
     }
-    
+
     // Step 3: Select provider based on policy and preference
     const processingMode = policyDecision.processingMode;
     let provider;
-    
+
     if (processingMode === "private" || request.forcePrivate === true) {
       // Policy requires private processing
-      provider = this.getProvider(request.preferredProvider || process.env.AI_PRIVATE_PROVIDER || "ollama");
-      
+      provider = this.getProvider(
+        request.preferredProvider ||
+          process.env.AI_PRIVATE_PROVIDER ||
+          "ollama",
+      );
+
       if (!provider) {
         const latency = Date.now() - startTime;
         return {
@@ -161,28 +199,36 @@ class AIGateway {
           classification: policyDecision.classification,
           classificationSource: policyDecision.classificationSource,
           data: null,
-          error: "PRIVATE_PROVIDER_UNAVAILABLE: Approved private AI provider is not available.",
-          reason: "Policy requires private processing, but private provider is unavailable.",
+          error:
+            "PRIVATE_PROVIDER_UNAVAILABLE: Approved private AI provider is not available.",
+          reason:
+            "Policy requires private processing, but private provider is unavailable.",
           metadata: {
             requestId,
             capability: request.capability,
             latency,
             timestamp: new Date().toISOString(),
           },
-          audit: this.createAuditMetadata(request, policyDecision, null, "blocked", latency),
+          audit: this.createAuditMetadata(
+            request,
+            policyDecision,
+            null,
+            "blocked",
+            latency,
+          ),
         };
       }
     } else if (processingMode === "external") {
       // Policy allows external processing
       const preferredProvider = request.preferredProvider || "auto";
-      
+
       if (preferredProvider === "auto") {
         // Auto-select: try gemini first, then groq
         provider = this.getProvider("gemini") || this.getProvider("groq");
       } else {
         provider = this.getProvider(preferredProvider);
       }
-      
+
       if (!provider) {
         const latency = Date.now() - startTime;
         return {
@@ -194,7 +240,8 @@ class AIGateway {
           classification: policyDecision.classification,
           classificationSource: policyDecision.classificationSource,
           data: null,
-          error: "PROVIDER_UNAVAILABLE: Requested AI provider is not available.",
+          error:
+            "PROVIDER_UNAVAILABLE: Requested AI provider is not available.",
           reason: "External AI provider is not configured or unavailable.",
           metadata: {
             requestId,
@@ -202,14 +249,20 @@ class AIGateway {
             latency,
             timestamp: new Date().toISOString(),
           },
-          audit: this.createAuditMetadata(request, policyDecision, null, "blocked", latency),
+          audit: this.createAuditMetadata(
+            request,
+            policyDecision,
+            null,
+            "blocked",
+            latency,
+          ),
         };
       }
     }
-    
+
     // Step 4: Execute provider request
     let providerResult;
-    
+
     try {
       if (request.schema) {
         // Structured generation
@@ -233,7 +286,7 @@ class AIGateway {
       }
     } catch (error) {
       const latency = Date.now() - startTime;
-      
+
       return {
         success: false,
         allowed: true,
@@ -251,12 +304,18 @@ class AIGateway {
           latency,
           timestamp: new Date().toISOString(),
         },
-        audit: this.createAuditMetadata(request, policyDecision, provider, processingMode, latency),
+        audit: this.createAuditMetadata(
+          request,
+          policyDecision,
+          provider,
+          processingMode,
+          latency,
+        ),
       };
     }
-    
+
     const latency = Date.now() - startTime;
-    
+
     // Step 5: Return normalized response
     return {
       success: providerResult.success,
@@ -277,7 +336,13 @@ class AIGateway {
         latency,
         timestamp: new Date().toISOString(),
       },
-      audit: this.createAuditMetadata(request, policyDecision, provider, processingMode, latency),
+      audit: this.createAuditMetadata(
+        request,
+        policyDecision,
+        provider,
+        processingMode,
+        latency,
+      ),
     };
   }
 
@@ -306,7 +371,7 @@ class AIGateway {
    */
   async healthCheck() {
     const results = {};
-    
+
     for (const [name, provider] of this.providers.entries()) {
       try {
         results[name] = await provider.healthCheck();
@@ -317,7 +382,7 @@ class AIGateway {
         };
       }
     }
-    
+
     return results;
   }
 }

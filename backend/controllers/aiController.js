@@ -10,34 +10,45 @@ export const summarizeMaterial = async (req, res) => {
     const material = await Material.findById(req.params.materialId);
 
     if (!material) {
-      return res.status(404).json({ message: "Material not found" });
+      return res.status(404).json({
+        message: "Material not found",
+      });
     }
 
     if (
       (req.user.role === "student" || req.user.role === "learner") &&
       !material.students.includes(req.user._id)
     ) {
-      return res.status(403).json({ message: "Not authorized" });
+      return res.status(403).json({
+        message: "Not authorized",
+      });
     }
 
-    const text = await extractTextFromUrl(
-  material.filePath,
-  material.fileName
-);
-
-
+    // Extract material text
+    const text = await extractTextFromUrl(material.filePath, material.fileName);
 
     const shortText = text.slice(0, 20000);
 
+    // For now, material summarization uses Gemini
     const aiResult = await generateWithAI({
+      provider: "gemini",
       purpose: "material-summary",
-      content: `
-Summarize this study material in clean bullet points and highlight key concepts:
 
-${shortText}
-`,
-      classification: material.classification || "PUBLIC",
-      externalAIAllowed: material.externalAIAllowed !== false,
+      content: `Summarize this study material in clean bullet points and highlight key concepts:
+
+${shortText}`,
+
+      classification:
+        material.classification === "UNKNOWN" || !material.classification
+          ? "CATEGORY_A_OPEN_ACCESS"
+          : material.classification,
+
+      externalAIAllowed: true,
+
+      systemPrompt:
+        "You are an educational AI assistant. Summarize the provided study material clearly using concise bullet points. Highlight important concepts, definitions, facts, and key takeaways.",
+
+      maxTokens: 2048,
     });
 
     if (!aiResult.success) {
@@ -47,15 +58,17 @@ ${shortText}
       });
     }
 
-    const summary = aiResult.data;
+    return res.json({
+      summary: aiResult.data,
+      provider: aiResult.provider,
+    });
+  } catch (error) {
+    console.error("AI Controller Error:", error);
 
-    res.json({ summary });
- } catch (error) {
-  console.error("AI Controller Error:", error);
-  res.status(500).json({
-    message: error.message || "AI summary failed",
-  });
-}
+    return res.status(500).json({
+      message: error.message || "AI summary failed",
+    });
+  }
 };
 
 export const generateAINotes = async (req, res) => {
@@ -69,7 +82,7 @@ export const generateAINotes = async (req, res) => {
     const prompt = `
 CRITICAL: You MUST respond ONLY with valid JSON. No markdown, no explanations, no code blocks - ONLY pure JSON.
 
-Generate comprehensive AI notes for the topic: "${topic}" ${description ? `with additional context: ${description}` : ''}
+Generate comprehensive AI notes for the topic: "${topic}" ${description ? `with additional context: ${description}` : ""}
 
 Your response must be valid JSON following this exact structure:
 {
@@ -149,51 +162,55 @@ RULES:
     }
 
     const response = aiResult.data;
-    
-    console.log('Raw AI response:', response);
-    console.log('Response length:', response.length);
-    
+
+    console.log("Raw AI response:", response);
+    console.log("Response length:", response.length);
+
     // Extract JSON from response (handle cases where AI adds markdown or extra text)
     let jsonString = response;
-    
+
     // Remove markdown code blocks if present
-    if (response.includes('```json')) {
+    if (response.includes("```json")) {
       const match = response.match(/```json\s*([\s\S]*?)\s*```/);
       if (match) jsonString = match[1];
-    } else if (response.includes('```')) {
+    } else if (response.includes("```")) {
       const match = response.match(/```\s*([\s\S]*?)\s*```/);
       if (match) jsonString = match[1];
     }
-    
+
     // Try to find JSON object in the response
     const jsonMatch = jsonString.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       jsonString = jsonMatch[0];
     }
-    
+
     // Try to parse as JSON, if fails return as plain text
     let notesData;
     try {
       notesData = JSON.parse(jsonString);
-      console.log('Successfully parsed JSON');
-      
+      console.log("Successfully parsed JSON");
+
       // Validate structure
       if (!notesData.sections || !Array.isArray(notesData.sections)) {
-        throw new Error('Invalid structure: sections missing');
+        throw new Error("Invalid structure: sections missing");
       }
     } catch (parseError) {
-      console.log('JSON parse failed, using fallback:', parseError.message);
+      console.log("JSON parse failed, using fallback:", parseError.message);
       // Fallback: structure the plain text response
       notesData = {
         title: topic,
         overview: "AI-generated notes for " + topic,
-        sections: [{
-          heading: "Generated Content",
-          content: "The AI generated the following content:\n\n" + response.substring(0, 2000),
-          visuals: [],
-          examples: []
-        }],
-        summary: "AI-generated summary based on the topic"
+        sections: [
+          {
+            heading: "Generated Content",
+            content:
+              "The AI generated the following content:\n\n" +
+              response.substring(0, 2000),
+            visuals: [],
+            examples: [],
+          },
+        ],
+        summary: "AI-generated summary based on the topic",
       };
     }
 
@@ -207,24 +224,26 @@ RULES:
         overview: notesData.overview,
         sections: notesData.sections,
         summary: notesData.summary,
-        tags: [topic.toLowerCase(), ...topic.split(' ')].filter(tag => tag.length > 2),
+        tags: [topic.toLowerCase(), ...topic.split(" ")].filter(
+          (tag) => tag.length > 2,
+        ),
       });
 
       await aiNote.save();
-      console.log('AI Note saved to database:', aiNote._id);
-      
-      res.json({ 
+      console.log("AI Note saved to database:", aiNote._id);
+
+      res.json({
         notes: notesData,
         noteId: aiNote._id,
-        saved: true
+        saved: true,
       });
     } catch (dbError) {
-      console.error('Database save error:', dbError);
+      console.error("Database save error:", dbError);
       // Still return the notes even if save fails
-      res.json({ 
+      res.json({
         notes: notesData,
         saved: false,
-        error: "Failed to save notes to database"
+        error: "Failed to save notes to database",
       });
     }
   } catch (error) {
@@ -238,7 +257,7 @@ RULES:
 export const downloadAINotePDF = async (req, res) => {
   try {
     const { noteId } = req.params;
-    
+
     const note = await AINote.findById(noteId);
     if (!note) {
       return res.status(404).json({ message: "Note not found" });
@@ -261,7 +280,7 @@ export const downloadAINotePDF = async (req, res) => {
     pdf.setFontSize(12);
     pdf.text(`Topic: ${note.topic}`, 20, yPosition);
     yPosition += 10;
-    
+
     pdf.setFontSize(10);
     const overviewLines = pdf.splitTextToSize(note.overview, 170);
     pdf.text(overviewLines, 20, yPosition);
@@ -285,8 +304,8 @@ export const downloadAINotePDF = async (req, res) => {
 
       // Visuals
       if (section.visuals && section.visuals.length > 0) {
-        section.visuals.forEach(visual => {
-          if (visual.type === 'table' && Array.isArray(visual.data)) {
+        section.visuals.forEach((visual) => {
+          if (visual.type === "table" && Array.isArray(visual.data)) {
             pdf.setFontSize(11);
             pdf.text(visual.title, 20, yPosition);
             yPosition += 7;
@@ -294,11 +313,11 @@ export const downloadAINotePDF = async (req, res) => {
             // Simple table rendering
             const keys = Object.keys(visual.data[0]);
             let tableY = yPosition;
-            
+
             // Headers
             pdf.setFontSize(9);
             keys.forEach((key, i) => {
-              pdf.text(key, 20 + (i * 40), tableY);
+              pdf.text(key, 20 + i * 40, tableY);
             });
             tableY += 5;
 
@@ -309,11 +328,11 @@ export const downloadAINotePDF = async (req, res) => {
                 tableY = 20;
               }
               keys.forEach((key, i) => {
-                pdf.text(String(row[key] || ''), 20 + (i * 40), tableY);
+                pdf.text(String(row[key] || ""), 20 + i * 40, tableY);
               });
               tableY += 4;
             });
-            
+
             yPosition = tableY + 10;
           }
         });
@@ -327,11 +346,11 @@ export const downloadAINotePDF = async (req, res) => {
       pdf.addPage();
       yPosition = 20;
     }
-    
+
     pdf.setFontSize(14);
     pdf.text("Summary", 20, yPosition);
     yPosition += 10;
-    
+
     pdf.setFontSize(10);
     const summaryLines = pdf.splitTextToSize(note.summary, 170);
     pdf.text(summaryLines, 20, yPosition);
@@ -341,10 +360,12 @@ export const downloadAINotePDF = async (req, res) => {
     await note.save();
 
     // Send PDF
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${note.title.replace(/[^a-z0-9]/gi, '_')}.pdf"`);
-    res.send(Buffer.from(pdf.output('arraybuffer')));
-
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${note.title.replace(/[^a-z0-9]/gi, "_")}.pdf"`,
+    );
+    res.send(Buffer.from(pdf.output("arraybuffer")));
   } catch (error) {
     console.error("PDF download error:", error);
     res.status(500).json({ message: "Failed to generate PDF" });
@@ -355,7 +376,7 @@ export const getSavedNotes = async (req, res) => {
   try {
     const notes = await AINote.find({ student: req.user._id })
       .sort({ createdAt: -1 })
-      .select('title topic overview createdAt tags downloadCount viewCount');
+      .select("title topic overview createdAt tags downloadCount viewCount");
 
     res.json(notes);
   } catch (error) {
@@ -367,7 +388,7 @@ export const getSavedNotes = async (req, res) => {
 export const getAINoteById = async (req, res) => {
   try {
     const { noteId } = req.params;
-    
+
     const note = await AINote.findById(noteId);
     if (!note) {
       return res.status(404).json({ message: "Note not found" });

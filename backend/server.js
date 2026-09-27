@@ -44,7 +44,7 @@ import facultyMaterialRoutes from "./routes/facultyMaterialRoutes.js";
 import semesterRoutes from "./routes/semesterRoutes.js";
 import codeEditorRoutes from "./routes/codeEditorRoutes.js";
 
-
+import path from "path";
 
 
 dotenv.config();
@@ -55,6 +55,7 @@ if (process.env.RENDER === "true") {
   initializeSLAMonitoring();
   startGrievanceTimeoutService();
 }
+
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -108,6 +109,7 @@ io.on("connection", (socket) => {
 
 // ✅ Middleware
 app.use(express.json({ limit: "2mb" }));
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 app.use(cors({
   origin: process.env.CLIENT_URL,

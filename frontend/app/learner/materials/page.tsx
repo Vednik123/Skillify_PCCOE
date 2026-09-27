@@ -1,100 +1,113 @@
-'use client'
+"use client";
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { Card } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Search, FileText, Download, Calendar, Sparkles } from 'lucide-react'
-import API from "@/lib/api"
-import { useLanguage } from '@/contexts/LanguageContext'
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Search, FileText, Download, Calendar, Sparkles } from "lucide-react";
+import API from "@/lib/api";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function MaterialsPage() {
-  const router = useRouter()
-  const { t } = useLanguage()
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedSubject, setSelectedSubject] = useState('')
-  const [materialsData, setMaterialsData] = useState<any[]>([])
+  const router = useRouter();
+  const { t } = useLanguage();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedSubject, setSelectedSubject] = useState("");
+  const [materialsData, setMaterialsData] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchMaterials = async () => {
       try {
-        const res = await API.get("/learner/materials")
-        setMaterialsData(res.data || [])
+        const res = await API.get("/learner/materials");
+        setMaterialsData(res.data || []);
       } catch (err) {
-        console.error("Failed to load materials:", err)
+        console.error("Failed to load materials:", err);
       }
-    }
-    fetchMaterials()
-  }, [])
+    };
+    fetchMaterials();
+  }, []);
 
-  const [activeMaterial, setActiveMaterial] = useState<any | null>(null)
-  const [selectedFile, setSelectedFile] = useState<string | null>(null)
-  const [summary, setSummary] = useState<string>("")
-  const [loading, setLoading] = useState(false)
-  const [generatingQuiz, setGeneratingQuiz] = useState(false)
-  const [generationStep, setGenerationStep] = useState('')
+  const [activeMaterial, setActiveMaterial] = useState<any | null>(null);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [summary, setSummary] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const [generatingQuiz, setGeneratingQuiz] = useState(false);
+  const [generationStep, setGenerationStep] = useState("");
 
   const generateQuiz = async (material: any) => {
-    setGeneratingQuiz(true)
-    setGenerationStep('1/3 Preparing content')
+    setGeneratingQuiz(true);
+    setGenerationStep("1/3 Preparing content");
     try {
-      setGenerationStep('2/3 Qwen generating')
-      const response = await API.post(`/learner/materials/${material._id}/generate-quiz`, { questionCount: 10 })
-      setGenerationStep('3/3 Validating questions')
-      router.push(`/learner/quiz/take/${response.data.examId}`)
+      setGenerationStep("2/3 Qwen generating");
+      const response = await API.post(
+        `/learner/materials/${material._id}/generate-quiz`,
+        { questionCount: 10 },
+      );
+      setGenerationStep("3/3 Validating questions");
+      router.push(`/learner/quiz/take/${response.data.examId}`);
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Quiz generation failed')
+      alert(error.response?.data?.message || "Quiz generation failed");
     } finally {
-      setGeneratingQuiz(false)
-      setGenerationStep('')
+      setGeneratingQuiz(false);
+      setGenerationStep("");
     }
-  }
+  };
 
   const filteredMaterials = materialsData.filter((material) => {
-    const search = searchTerm.toLowerCase()
+    const search = searchTerm.toLowerCase();
 
     const matchesSearch =
       material.title?.toLowerCase().includes(search) ||
       material.description?.toLowerCase().includes(search) ||
-      material.faculty?.fullName?.toLowerCase().includes(search)
+      material.faculty?.fullName?.toLowerCase().includes(search);
 
     const matchesSubject =
       selectedSubject.trim() === "" ||
-      material.description?.toLowerCase().includes(selectedSubject.toLowerCase())
+      material.description
+        ?.toLowerCase()
+        .includes(selectedSubject.toLowerCase());
 
-    return matchesSearch && matchesSubject
-  })
+    return matchesSearch && matchesSubject;
+  });
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div className="border-b border-border pb-4">
-        <h1 className="text-2xl font-semibold text-foreground tracking-tight">{t('materials.title')}</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">{t('materials.subtitle')}</p>
+        <h1 className="text-2xl font-semibold text-foreground tracking-tight">
+          {t("materials.title")}
+        </h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          {t("materials.subtitle")}
+        </p>
       </div>
 
       {/* Search and Filter */}
       <Card className="border border-border p-4 bg-card shadow-xs">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-foreground">{t('materials.searchMaterials')}</label>
+            <label className="text-xs font-semibold text-foreground">
+              {t("materials.searchMaterials")}
+            </label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder={t('materials.searchMaterials')}
+                placeholder={t("materials.searchMaterials")}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="h-9 pl-9 border-border text-xs"
               />
             </div>
           </div>
-          
+
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-foreground">{t('materials.subject')}</label>
+            <label className="text-xs font-semibold text-foreground">
+              {t("materials.subject")}
+            </label>
             <div className="relative">
               <Input
-                placeholder={t('materials.typeSubjectName')}
+                placeholder={t("materials.typeSubjectName")}
                 value={selectedSubject}
                 onChange={(e) => setSelectedSubject(e.target.value)}
                 className="h-9 border-border text-xs"
@@ -109,12 +122,15 @@ export default function MaterialsPage() {
         <Card className="border border-border shadow-xs">
           <div className="p-4 border-b border-border">
             <h2 className="text-sm font-semibold text-foreground">
-              {t('materials.documents')} ({filteredMaterials.length})
+              {t("materials.documents")} ({filteredMaterials.length})
             </h2>
           </div>
           <div className="divide-y divide-border">
             {filteredMaterials.map((material) => (
-              <div key={material._id} className="p-4 hover:bg-secondary/40 transition-colors">
+              <div
+                key={material._id}
+                className="p-4 hover:bg-secondary/40 transition-colors"
+              >
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                   <div className="flex-1">
                     <div className="flex items-start gap-3">
@@ -122,7 +138,9 @@ export default function MaterialsPage() {
                         <FileText className="w-4 h-4" />
                       </div>
                       <div>
-                        <h3 className="text-xs font-semibold text-foreground">{material.title}</h3>
+                        <h3 className="text-xs font-semibold text-foreground">
+                          {material.title}
+                        </h3>
                         <p className="text-[11px] text-muted-foreground mt-0.5">
                           {material.faculty?.fullName} · {material.description}
                         </p>
@@ -131,9 +149,13 @@ export default function MaterialsPage() {
                     <div className="flex items-center gap-4 mt-2 text-[11px] text-muted-foreground ml-9">
                       <div className="flex items-center gap-1">
                         <Calendar className="w-3 h-3" />
-                        <span>{new Date(material.createdAt).toLocaleDateString()}</span>
+                        <span>
+                          {new Date(material.createdAt).toLocaleDateString()}
+                        </span>
                       </div>
-                      <span className="truncate max-w-[150px]">{material.fileName}</span>
+                      <span className="truncate max-w-[150px]">
+                        {material.fileName}
+                      </span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0 ml-9 sm:ml-0">
@@ -142,7 +164,7 @@ export default function MaterialsPage() {
                         try {
                           const response = await API.get(
                             `/learner/materials/download/${material._id}`,
-                            { responseType: "blob" }
+                            { responseType: "blob" },
                           );
 
                           const blob = new Blob([response.data]);
@@ -165,48 +187,53 @@ export default function MaterialsPage() {
                       className="h-8 text-xs"
                     >
                       <Download className="w-3 h-3 mr-1" />
-                      {t('materials.download')}
+                      {t("materials.download")}
                     </Button>
 
                     <Button
                       onClick={() => {
-                        setActiveMaterial(material)
-                        setSummary("")
+                        setActiveMaterial(material);
+                        setSummary("");
                         const previewUrl = `https://docs.google.com/gview?url=${encodeURIComponent(
-                          material.filePath
-                        )}&embedded=true`
-                        setSelectedFile(previewUrl)
+                          material.filePath,
+                        )}&embedded=true`;
+                        setSelectedFile(previewUrl);
                       }}
                       variant="outline"
                       size="sm"
                       className="h-8 text-xs"
                     >
-                      {t('materials.view')}
+                      {t("materials.view")}
                     </Button>
 
                     <Button
                       onClick={async () => {
                         try {
-                          setActiveMaterial(material)
-                          setSelectedFile(null)
-                          setSummary("")
-                          setLoading(true)
-                          const res = await API.post(`/summarize/${material._id}`)
-                          setSummary(res.data.summary)
+                          setActiveMaterial(material);
+                          setSelectedFile(null);
+                          setSummary("");
+                          setLoading(true);
+                          const res = await API.post(
+                            `/ai/summarize/${material._id}`,
+                          );
+                          setSummary(res.data.summary);
                         } catch (err: any) {
-                          console.error("Summarize error:", err.response?.data || err.message)
+                          console.error(
+                            "Summarize error:",
+                            err.response?.data || err.message,
+                          );
                           alert(
                             err.response?.data?.message ||
-                            "Summarization failed"
-                          )
+                              "Summarization failed",
+                          );
                         }
-                        setLoading(false)
+                        setLoading(false);
                       }}
                       variant="outline"
                       size="sm"
                       className="h-8 text-xs"
                     >
-                      {t('materials.summarize')}
+                      {t("materials.summarize")}
                     </Button>
                   </div>
                 </div>
@@ -218,7 +245,9 @@ export default function MaterialsPage() {
         <Card className="border border-border p-8 bg-card shadow-xs">
           <div className="text-center py-6">
             <FileText className="w-10 h-10 text-muted-foreground mx-auto mb-2 opacity-60" />
-            <p className="text-xs text-muted-foreground">{t('materials.noMaterials')}</p>
+            <p className="text-xs text-muted-foreground">
+              {t("materials.noMaterials")}
+            </p>
           </div>
         </Card>
       )}
@@ -229,26 +258,37 @@ export default function MaterialsPage() {
           <div className="p-4 border-b border-border">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-sm font-semibold text-foreground">{activeMaterial?.title}</h2>
+                <h2 className="text-sm font-semibold text-foreground">
+                  {activeMaterial?.title}
+                </h2>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
-                  by {activeMaterial?.faculty?.fullName} • {activeMaterial ? new Date(activeMaterial.createdAt).toLocaleDateString() : ''}
+                  by {activeMaterial?.faculty?.fullName} •{" "}
+                  {activeMaterial
+                    ? new Date(activeMaterial.createdAt).toLocaleDateString()
+                    : ""}
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <Button onClick={() => activeMaterial && generateQuiz(activeMaterial)} disabled={generatingQuiz} size="sm" variant="outline" className="text-xs h-8">
+                <Button
+                  onClick={() => activeMaterial && generateQuiz(activeMaterial)}
+                  disabled={generatingQuiz}
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-8"
+                >
                   <Sparkles className="w-3 h-3 mr-1 text-primary" />
-                  {generatingQuiz ? generationStep : 'Generate Quiz'}
+                  {generatingQuiz ? generationStep : "Generate Quiz"}
                 </Button>
                 <Button
                   onClick={() => {
-                    setSelectedFile(null)
-                    setSummary("")
+                    setSelectedFile(null);
+                    setSummary("");
                   }}
                   variant="ghost"
                   size="sm"
                   className="h-8 px-3 text-xs text-muted-foreground hover:text-foreground"
                 >
-                  {t('common.close')}
+                  {t("common.close")}
                 </Button>
               </div>
             </div>
@@ -258,7 +298,9 @@ export default function MaterialsPage() {
             {loading && (
               <div className="flex flex-col items-center justify-center py-10">
                 <div className="w-6 h-6 border-2 border-border border-t-primary rounded-full animate-spin mb-2"></div>
-                <p className="text-xs text-muted-foreground">{t('materials.generatingSummary')}</p>
+                <p className="text-xs text-muted-foreground">
+                  {t("materials.generatingSummary")}
+                </p>
               </div>
             )}
 
@@ -282,7 +324,9 @@ export default function MaterialsPage() {
                   <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center">
                     <Sparkles className="w-3 h-3 text-primary" />
                   </div>
-                  <h3 className="text-xs font-semibold text-foreground">AI Summary</h3>
+                  <h3 className="text-xs font-semibold text-foreground">
+                    AI Summary
+                  </h3>
                 </div>
                 <div className="text-xs text-foreground leading-relaxed whitespace-pre-line">
                   {summary}
@@ -295,8 +339,11 @@ export default function MaterialsPage() {
 
       {/* Results Count */}
       <div className="text-xs text-muted-foreground">
-        {t('materials.showCount', { count: filteredMaterials.length, total: materialsData.length })}
+        {t("materials.showCount", {
+          count: filteredMaterials.length,
+          total: materialsData.length,
+        })}
       </div>
     </div>
-  )
+  );
 }
